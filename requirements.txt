@@ -1,0 +1,4 @@
+selenium==4.11.2
+pillow==9.3.0
+pytesseract==0.3.10
+webdriver
