@@ -1,0 +1,29 @@
+<!-- nfce/templates/nfce/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFCE Scraper - Escanear QR Code ou Inserir Chave de Acesso</title>
+</head>
+<body>
+    <h1>NFCE Scraper - Escanear QR Code ou Inserir Chave de Acesso</h1>
+
+    <!-- Botão para escanear QR Code com a câmera -->
+    <h2>Escanear QR Code com a Câmera</h2>
+    <form method="POST">
+        {% csrf_token %}
+        <button type="submit" name="escanear_qr_code">Escanear QR Code com a Câmera</button>
+    </form>
+
+    <!-- Inserir Chave de Acesso Manualmente -->
+    <h2>Inserir Chave de Acesso Manualmente</h2>
+    <form method="POST">
+        {% csrf_token %}
+        <label for="chave_acesso">Chave de Acesso:</label>
+        <input type="text" id="chave_acesso" name="chave_acesso" required>
+        <button type="submit">Enviar</button>
+    </form>
+</body>
+</html>

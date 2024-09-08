@@ -1,0 +1,27 @@
+<!-- nfce/templates/nfce/nota_fiscal.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Informações da Nota Fiscal</title>
+</head>
+<body>
+    <h1>Informações da Nota Fiscal</h1>
+
+    <p><strong>Número e Série:</strong> {{ numero_serie }}</p>
+    <p><strong>Razão Social:</strong> {{ razao_social }}</p>
+    <p><strong>CNPJ:</strong> {{ cnpj_emitente }}</p>
+    <p><strong>Inscrição Estadual:</strong> {{ inscricao_estadual }}</p>
+    <p><strong>Descrição do Produto:</strong> {{ descricao_produto }}</p>
+    <p><strong>Valor Total dos Produtos:</strong> {{ valor_total_produtos }}</p>
+    <p><strong>Forma de Pagamento:</strong> {{ forma_pagamento }}</p>
+    <p><strong>Chave de Acesso:</strong> {{ chave_acesso }}</p>
+
+    <!-- Botão para voltar à página inicial -->
+    <form method="get" action="{% url 'index' %}">
+        <button type="submit">Voltar</button>
+    </form>
+</body>
+</html>
