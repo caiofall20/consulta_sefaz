@@ -14,7 +14,35 @@
     <p><strong>Razão Social:</strong> {{ razao_social }}</p>
     <p><strong>CNPJ:</strong> {{ cnpj_emitente }}</p>
     <p><strong>Inscrição Estadual:</strong> {{ inscricao_estadual }}</p>
-    <p><strong>Descrição do Produto:</strong> {{ descricao_produto }}</p>
+    <p><strong>Data de Emissão:</strong> {{ data_emissao }}</p>
+    <p><strong>Data de Autorização:</strong> {{ data_autorizacao }}</p>
+
+    <h2>Itens</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Descrição</th>
+                <th>Quantidade</th>
+                <th>Unidade</th>
+                <th>Valor Unitário</th>
+                <th>Desconto</th>
+                <th>Valor Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens %}
+            <tr>
+                <td>{{ item.descricao }}</td>
+                <td>{{ item.quantidade }}</td>
+                <td>{{ item.unidade }}</td>
+                <td>{{ item.valor_unid }}</td>
+                <td>{{ item.desconto }}</td>
+                <td>{{ item.valor_total }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
     <p><strong>Valor Total dos Produtos:</strong> {{ valor_total_produtos }}</p>
     <p><strong>Forma de Pagamento:</strong> {{ forma_pagamento }}</p>
     <p><strong>Chave de Acesso:</strong> {{ chave_acesso }}</p>

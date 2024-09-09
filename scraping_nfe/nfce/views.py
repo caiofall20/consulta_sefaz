@@ -123,11 +123,36 @@ def process_captcha(request, qr_code_url):
     return render(request, 'nfce/nota_fiscal.html', context)
 
 def extract_nota_info(driver):
+    # Captura as informações da nota fiscal
     numero_serie = driver.find_element(By.ID, 'lblNumeroSerie').text
     razao_social = driver.find_element(By.ID, 'lblRazaoSocialEmitente').text
     cnpj_emitente = driver.find_element(By.ID, 'lblCPFCNPJEmitente').text
     inscricao_estadual = driver.find_element(By.ID, 'lblInscricaoEstadualEmitente').text
-    descricao_produto = driver.find_element(By.ID, 'tbItensList_lblTbItensDescricao_0').text
+
+    # Captura as datas de emissão e autorização
+    data_emissao = driver.find_element(By.ID, 'lblDataEmissao').text
+    data_autorizacao = driver.find_element(By.ID, 'lblDataAutorizacaoDenegacao').text
+
+    # Captura os itens da tabela (todos os itens)
+    itens = []
+    rows = driver.find_elements(By.XPATH, '//table[@id="tbItensList"]/tbody/tr')
+    for row in rows:
+        descricao = row.find_element(By.XPATH, './/td[2]').text
+        quantidade = row.find_element(By.XPATH, './/td[3]').text
+        unidade = row.find_element(By.XPATH, './/td[4]').text
+        valor_unid = row.find_element(By.XPATH, './/td[5]').text
+        desconto = row.find_element(By.XPATH, './/td[6]').text
+        valor_total = row.find_element(By.XPATH, './/td[7]').text
+        itens.append({
+            'descricao': descricao,
+            'quantidade': quantidade,
+            'unidade': unidade,
+            'valor_unid': valor_unid,
+            'desconto': desconto,
+            'valor_total': valor_total
+        })
+
+    # Captura o valor total, forma de pagamento e chave de acesso
     valor_total_produtos = driver.find_element(By.ID, 'lblValorTotal').text
     forma_pagamento = driver.find_element(By.ID, 'lblFormaPagamento').text
     chave_acesso = driver.find_element(By.ID, 'lblChave').text
@@ -137,7 +162,9 @@ def extract_nota_info(driver):
         'razao_social': razao_social,
         'cnpj_emitente': cnpj_emitente,
         'inscricao_estadual': inscricao_estadual,
-        'descricao_produto': descricao_produto,
+        'data_emissao': data_emissao,
+        'data_autorizacao': data_autorizacao,
+        'itens': itens,
         'valor_total_produtos': valor_total_produtos,
         'forma_pagamento': forma_pagamento,
         'chave_acesso': chave_acesso
