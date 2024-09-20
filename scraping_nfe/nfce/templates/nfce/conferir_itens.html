@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Conferir Itens</title>
+    <!-- Adicione seus CSS e JavaScript aqui -->
+</head>
+<body>
+    <h1>Conferir Itens da Nota Fiscal</h1>
+    <h3>Nota Fiscal - {{ nota_fiscal.numero_serie }}</h3>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Descrição</th>
+                <th>Quantidade</th>
+                <th>Unidade</th>
+                <th>Valor Unitário</th>
+                <th>Desconto</th>
+                <th>Valor Total</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens %}
+            <tr>
+                <form method="POST" action="{% url 'editar_itens' nota_fiscal_id=nota_fiscal.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <td><input type="text" name="descricao" value="{{ item.descricao }}"></td>
+                    <td><input type="text" name="quantidade" value="{{ item.quantidade }}"></td>
+                    <td><input type="text" name="unidade" value="{{ item.unidade }}"></td>
+                    <td><input type="text" name="valor_unid" value="{{ item.valor_unid }}"></td>
+                    <td><input type="text" name="desconto" value="{{ item.desconto }}"></td>
+                    <td><input type="text" name="valor_total" value="{{ item.valor_total }}"></td>
+                    <td>
+                        <button type="submit" name="editar_item">Editar</button>
+                        <button type="submit" name="excluir_item">Excluir</button>
+                    </td>
+                </form>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <form method="POST" action="{% url 'conferir_itens' %}">
+        {% csrf_token %}
+        <button type="submit" name="salvar_nota_fiscal">Confirmar e Salvar</button>
+    </form>
+    <a href="{% url 'listar_notas_fiscais' %}">Voltar para a listagem</a>
+</body>
+</html>

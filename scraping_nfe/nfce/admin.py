@@ -1,3 +1,6 @@
+# nfce/admin.py
 from django.contrib import admin
+from .models import NotaFiscal, Item
 
-# Register your models here.
+admin.site.register(NotaFiscal)
+admin.site.register(Item)

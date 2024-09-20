@@ -81,6 +81,17 @@ DATABASES = {
     }
 }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'dbnotafiscal',  # Nome do banco de dados
+#         'USER': 'postgres',  # Usuário do banco de dados
+#         'PASSWORD': 'postgres',  # Senha do usuário
+#         'HOST': 'localhost',  # Geralmente 'localhost'
+#         'PORT': '5433',  # Porta padrão do PostgreSQL
+#     }
+# }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

@@ -5,3 +5,4 @@ webdriver
 django==5.1.1
 pyzbar
 opencv-python
+psycopg2-binary

@@ -47,6 +47,11 @@
     <p><strong>Forma de Pagamento:</strong> {{ forma_pagamento }}</p>
     <p><strong>Chave de Acesso:</strong> {{ chave_acesso }}</p>
 
+    <!-- Botão para redirecionar para a página de edição -->
+    <form method="get" action="{% url 'editar_itens' nota_fiscal.id %}">
+        <button type="submit">Editar Itens</button>
+    </form>
+
     <!-- Botão para voltar à página inicial -->
     <form method="get" action="{% url 'index' %}">
         <button type="submit">Voltar</button>

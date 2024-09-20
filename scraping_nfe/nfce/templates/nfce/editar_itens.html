@@ -1,0 +1,60 @@
+<!-- nfce/templates/nfce/editar_itens.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Itens da Nota Fiscal</title>
+</head>
+<body>
+    <h1>Editar Itens da Nota Fiscal</h1>
+
+    <h2>Itens Existentes</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Descrição</th>
+                <th>Quantidade</th>
+                <th>Unidade</th>
+                <th>Valor Unitário</th>
+                <th>Desconto</th>
+                <th>Valor Total</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens %}
+            <tr>
+                <td>{{ item.descricao }}</td>
+                <td>{{ item.quantidade }}</td>
+                <td>{{ item.unidade }}</td>
+                <td>{{ item.valor_unid }}</td>
+                <td>{{ item.desconto }}</td>
+                <td>{{ item.valor_total }}</td>
+                <td>
+                    <form method="POST">
+                        {% csrf_token %}
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <button type="submit" name="editar_item">Editar</button>
+                        <button type="submit" name="excluir_item">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Adicionar Novo Item</h2>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" name="adicionar_item">Adicionar</button>
+    </form>
+
+    <!-- Botão para salvar e confirmar a Nota Fiscal -->
+    <form method="POST">
+        {% csrf_token %}
+        <button type="submit" name="salvar_nota_fiscal">Salvar Nota Fiscal</button>
+    </form>
+</body>
+</html>
