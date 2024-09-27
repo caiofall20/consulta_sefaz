@@ -11,6 +11,7 @@ import pytesseract
 from io import BytesIO
 from .models import NotaFiscal, Item
 from .forms import ItemForm
+from django.urls import reverse
 
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
@@ -164,7 +165,8 @@ def conferir_itens(request):
                     )
 
             # Redirecionar para a página de edição de itens com o ID correto
-            return redirect('editar_itens', nota_fiscal_id=nota_fiscal.id)
+            #return redirect('editar_itens', nota_fiscal_id=nota_fiscal.id)
+            return redirect(reverse('index'))
 
     # Exibe a página de conferência
     return render(request, 'nfce/conferir_itens.html', {
@@ -310,19 +312,13 @@ def listar_notas_fiscais(request):
     return render(request, 'nfce/nota_fiscal.html', {'notas_fiscais': notas_fiscais})
 
 def editar_itens(request, nota_fiscal_id):
+    # Obtém a nota fiscal pelo ID
     nota_fiscal = get_object_or_404(NotaFiscal, id=nota_fiscal_id)
     itens = nota_fiscal.itens.all()
 
     if request.method == 'POST':
-        if 'adicionar_item' in request.POST:
-            form = ItemForm(request.POST)
-            if form.is_valid():
-                item = form.save(commit=False)
-                item.nota_fiscal = nota_fiscal
-                item.save()
-                return redirect('editar_itens', nota_fiscal_id=nota_fiscal_id)
-
-        elif 'editar_item' in request.POST:
+        if 'editar_item' in request.POST:
+            # Editar um item específico
             item_id = request.POST.get('item_id')
             item = get_object_or_404(Item, id=item_id)
             form = ItemForm(request.POST, instance=item)
@@ -331,20 +327,23 @@ def editar_itens(request, nota_fiscal_id):
                 return redirect('editar_itens', nota_fiscal_id=nota_fiscal_id)
 
         elif 'excluir_item' in request.POST:
+            # Excluir um item específico
             item_id = request.POST.get('item_id')
             item = get_object_or_404(Item, id=item_id)
             item.delete()
             return redirect('editar_itens', nota_fiscal_id=nota_fiscal_id)
 
         elif 'salvar_nota_fiscal' in request.POST:
-            return redirect('index')
+            # Confirmar o salvamento e redirecionar para a listagem de notas
+            return redirect('listar_notas_fiscais')
 
-    form = ItemForm()
+    form = ItemForm()  # Formulário vazio apenas para exibir no template, mas não será utilizado para adicionar novos itens
     return render(request, 'nfce/editar_itens.html', {
         'nota_fiscal': nota_fiscal,
         'itens': itens,
-        'form': form  # O formulário será vazio, mas você pode customizá-lo para pré-preencher itens.
+        'form': form
     })
+
 
 
 def nota_fiscal_view(request, nota_fiscal_id):
