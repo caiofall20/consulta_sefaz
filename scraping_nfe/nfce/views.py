@@ -12,36 +12,68 @@ from io import BytesIO
 from .models import NotaFiscal, Item
 from .forms import ItemForm
 from django.urls import reverse
+import cv2
+from pyzbar.pyzbar import decode
+import uuid
 
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 def index(request):
     if request.method == 'POST':
+        # Checa se o usuário quer escanear o QR code
+        if 'escanear_qr_code' in request.POST:
+            qr_code_url = escanear_qr_code_com_camera()
+            if qr_code_url:
+                qr_code_url_encoded = urllib.parse.quote(qr_code_url, safe='')
+                return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
+            else:
+                return HttpResponse('QR Code não encontrado ou leitura falhou.')
+        
+        # Caso o usuário insira a chave de acesso manualmente
         chave_acesso = request.POST.get('chave_acesso')
         if chave_acesso:
             qr_code_url = f"http://nfce.set.rn.gov.br/portalDFE/NFCe/mDadosNFCe.aspx?p={chave_acesso}"
             qr_code_url_encoded = urllib.parse.quote(qr_code_url, safe='')
             return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
+
     return render(request, 'nfce/index.html')
 
-def process_captcha(request, qr_code_url):
-    # Decodifica a URL
-    qr_code_url = urllib.parse.unquote(qr_code_url)
+def escanear_qr_code_com_camera():
+    cap = cv2.VideoCapture(0)  # Abre a câmera
 
-    # Inicializa o driver do Selenium para acessar a página
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        decoded_objects = decode(frame)
+        for obj in decoded_objects:
+            qr_code_url = obj.data.decode('utf-8')
+            cap.release()
+            cv2.destroyAllWindows()
+            return qr_code_url
+
+        cv2.imshow('Escaneando QR Code - Pressione "q" para sair', frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+    return None
+
+def process_captcha(request, qr_code_url):
+    qr_code_url = urllib.parse.unquote(qr_code_url)
     driver = webdriver.Chrome()
 
     success = False
     while not success:
         try:
             driver.get(qr_code_url)
-
-            # Espera até que o CAPTCHA esteja presente
             captcha_element = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.ID, 'img_captcha'))
             )
 
-            # Captura e resolve o CAPTCHA
             captcha_location = captcha_element.location
             captcha_size = captcha_element.size
             png = driver.get_screenshot_as_png()
@@ -58,7 +90,6 @@ def process_captcha(request, qr_code_url):
 
             captcha_texto = pytesseract.image_to_string(captcha_im, config='--psm 6 -c tessedit_char_whitelist=0123456789')
 
-            # Preenche o CAPTCHA e prossegue
             campo_captcha = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.NAME, 'txt_cod_antirobo'))
             )
@@ -69,115 +100,77 @@ def process_captcha(request, qr_code_url):
             )
             botao_ver_danfe.click()
 
-            # Verifica se a página da nota fiscal foi carregada corretamente
             WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.ID, 'divConteudoDanfe'))
             )
-
-            # Se a página da nota fiscal foi carregada, parar o loop
             success = True
 
-            # Extrai as informações da nota fiscal
+            # Extrai os dados da nota fiscal
             nota_fiscal_data = extract_nota_info(driver)
-            
-            # Salva a Nota Fiscal imediatamente
-            nota_fiscal = salvar_nota_fiscal_e_itens(nota_fiscal_data, nota_fiscal_data.pop('itens'))
-
-            # Verifica se a nota fiscal foi salva corretamente
-            if nota_fiscal is None or nota_fiscal.id is None:
-                return HttpResponse("Erro ao salvar a nota fiscal. Tente novamente.")
-
-            # Fecha o navegador
             driver.quit()
 
-            # Salva o ID da nota fiscal na sessão
-            request.session['nota_fiscal_id'] = nota_fiscal.id
+            # Gerar identificador temporário para a nota fiscal
+            temp_id = str(uuid.uuid4())
+            nota_fiscal_data['temp_id'] = temp_id
+            
 
+            # Armazena os dados da nota fiscal na sessão (sem salvar no banco)
+            request.session['nota_fiscal_data'] = nota_fiscal_data
+            request.session['temp_id'] = temp_id
             # Redireciona para a página de conferência dos itens
             return redirect('conferir_itens')
 
         except Exception as e:
             print(f"Erro ao tentar resolver o CAPTCHA: {e}")
-            time.sleep(5)  # Tenta novamente após 5 segundos
+            time.sleep(5)
 
-    # Caso o loop falhe e saia sem sucesso, garante que o driver seja fechado
     driver.quit()
     return HttpResponse("Erro ao processar o CAPTCHA. Tente novamente.")
 
 
 def conferir_itens(request):
-    # Obtém o ID da nota fiscal salvo na sessão
-    nota_fiscal_id = request.session.get('nota_fiscal_id', None)
+    # Obtém os dados da nota fiscal salvos na sessão (sem ID do banco)
+    nota_fiscal_data = request.session.get('nota_fiscal_data', None)
 
-    if nota_fiscal_id is None:
+    if nota_fiscal_data is None:
         return HttpResponse("Erro: Nenhum dado de nota fiscal disponível.")
 
-    # Obtém a nota fiscal a partir do ID
-    nota_fiscal = NotaFiscal.objects.get(id=nota_fiscal_id)
-
     if request.method == 'POST':
-        # Editar um item específico
-        if 'editar_item' in request.POST:
-            item_id = request.POST.get('item_id')
-            item = get_object_or_404(Item, id=item_id)
+        # Função auxiliar para substituir a vírgula por ponto em valores numéricos e retornar None se o valor for inválido
+        def ajustar_valor(valor):
+            try:
+                if valor is None or valor == '':
+                    return 0.0  # Valor padrão 0.0
+                # Tenta converter o valor para float após substituir a vírgula por ponto
+                return float(valor.replace(',', '.'))
+            except ValueError:
+                # Caso ocorra um erro de conversão, retorna 0.0 como valor padrão
+                return 0.0
 
-            # Atualizar os campos do item com os valores enviados
-            item.descricao = request.POST.get('descricao')
-            item.quantidade = request.POST.get('quantidade').replace(',', '.')
-            item.unidade = request.POST.get('unidade')
-            item.valor_unid = request.POST.get('valor_unid').replace(',', '.')
-            item.desconto = request.POST.get('desconto').replace(',', '.')
-            item.valor_total = request.POST.get('valor_total').replace(',', '.')
+        # Atualiza os itens com os dados do formulário
+        itens_data = []
+        for i in range(len(nota_fiscal_data['itens'])):
+            itens_data.append({
+                'descricao': request.POST.get(f'item_descricao_{i}'),
+                'quantidade': ajustar_valor(request.POST.get(f'item_quantidade_{i}')),
+                'unidade': request.POST.get(f'item_unidade_{i}'),
+                'valor_unid': ajustar_valor(request.POST.get(f'item_valor_unid_{i}')),
+                'desconto': ajustar_valor(request.POST.get(f'item_desconto_{i}')),
+                'valor_total': ajustar_valor(request.POST.get(f'item_valor_total_{i}'))
+            })
+        nota_fiscal_data['itens'] = itens_data
 
-            # Salvar as mudanças no banco
-            item.save()
+        # Salva a nota fiscal e os itens no banco de dados
+        salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data)
 
-            # Redireciona para a mesma página para evitar reenvio do formulário
-            return redirect('conferir_itens')
-
-        # Excluir um item específico
-        elif 'excluir_item' in request.POST:
-            item_id = request.POST.get('item_id')
-            item = get_object_or_404(Item, id=item_id)
-            item.delete()
-
-            # Redireciona para a mesma página para evitar reenvio do formulário
-            return redirect('conferir_itens')
-
-        # Salvar a nota fiscal e os itens no banco de dados
-        elif 'salvar_nota_fiscal' in request.POST:
-            # Salva os itens, caso ainda não estejam no banco
-            if not nota_fiscal.itens.exists():  # Verifica se os itens já existem
-                for item_data in nota_fiscal_data['itens']:
-                    quantidade = float(item_data['quantidade'].replace(',', '.'))
-                    valor_unid = float(item_data['valor_unid'].replace(',', '.'))
-                    desconto = float(item_data['desconto'].replace(',', '.'))
-                    valor_total = float(item_data['valor_total'].replace(',', '.'))
-
-                    Item.objects.create(
-                        nota_fiscal=nota_fiscal,
-                        descricao=item_data['descricao'],
-                        quantidade=quantidade,
-                        unidade=item_data['unidade'],
-                        valor_unid=valor_unid,
-                        desconto=desconto,
-                        valor_total=valor_total
-                    )
-
-            # Redirecionar para a página de edição de itens com o ID correto
-            #return redirect('editar_itens', nota_fiscal_id=nota_fiscal.id)
-            return redirect(reverse('index'))
+        # Redirecionar para a página de listagem de notas fiscais após salvar
+        return redirect('listar_notas_fiscais')
 
     # Exibe a página de conferência
     return render(request, 'nfce/conferir_itens.html', {
-        'nota_fiscal': nota_fiscal,
-        'itens': nota_fiscal.itens.all(),
+        'nota_fiscal': nota_fiscal_data,
+        'itens': nota_fiscal_data['itens'],
     })
-
-
-
-
-
 
 
 def extract_nota_info(driver):
@@ -234,23 +227,24 @@ def extract_nota_info(driver):
         'chave_acesso': chave_acesso
     }
 
-
 def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
-    # Função auxiliar para converter valores com vírgula em valores decimais corretos
+    # Função auxiliar para converter valores com vírgula em valores decimais e garantir que não sejam nulos
     def converter_valor_decimal(valor):
         try:
+            if valor is None or valor == '':
+                return 0.0  # Retorna 0.0 se o valor for None ou vazio
             if isinstance(valor, str):
                 valor = valor.replace(',', '.').strip()  # Converte vírgula em ponto e remove espaços
             return float(valor)  # Converte para float para garantir que seja numérico
         except ValueError:
             print(f"Erro ao converter valor: {valor}")
-            return None  # Retorna None se a conversão falhar
+            return 0.0  # Retorna 0.0 se a conversão falhar
 
     # Converte os valores numéricos da nota fiscal (somente os campos numéricos)
     nota_fiscal_data['valor_total_produtos'] = converter_valor_decimal(nota_fiscal_data['valor_total_produtos'])
 
-    # Cria a instância da NotaFiscal
     try:
+        # Salva a nota fiscal no banco
         nota_fiscal = NotaFiscal.objects.create(
             numero_serie=nota_fiscal_data['numero_serie'],
             razao_social=nota_fiscal_data['razao_social'],
@@ -265,45 +259,36 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
         print(f"Nota Fiscal salva com ID: {nota_fiscal.id}")
     except Exception as e:
         print(f"Erro ao salvar a nota fiscal: {e}")
-        return None  # Retorna None se a criação falhar
-
-    # Verifica se a instância foi criada e se possui um ID válido
-    if not nota_fiscal.id:
-        print("Erro: ID da nota fiscal não gerado corretamente.")
         return None
 
-    # Itera sobre os itens e converte apenas os campos numéricos antes de salvar
+    # Itera sobre os itens e salva no banco
     for item_data in itens_data:
-        # Converte valores numéricos e valida antes de salvar
-        quantidade = converter_valor_decimal(item_data['quantidade'])
-        valor_unid = converter_valor_decimal(item_data['valor_unid'])
-        desconto = converter_valor_decimal(item_data['desconto'])
-        valor_total = converter_valor_decimal(item_data['valor_total'])
+        descricao = item_data.get('descricao', '').strip() or 'Sem descrição'
+        quantidade = converter_valor_decimal(item_data.get('quantidade'))
+        unidade = item_data.get('unidade', '').strip() or 'UN'
+        valor_unid = converter_valor_decimal(item_data.get('valor_unid'))
+        desconto = converter_valor_decimal(item_data.get('desconto'))
+        valor_total = converter_valor_decimal(item_data.get('valor_total'))
 
-        # Verifica se todos os valores numéricos são válidos antes de salvar
-        if quantidade is not None and valor_unid is not None and valor_total is not None:
+        # Verifica se todos os campos são válidos
+        if descricao and unidade:
             try:
                 Item.objects.create(
                     nota_fiscal=nota_fiscal,
-                    descricao=item_data['descricao'],  # Campo de texto, não precisa de conversão
-                    quantidade=quantidade,  # Numérico
-                    unidade=item_data['unidade'],  # Campo de texto, não precisa de conversão
-                    valor_unid=valor_unid,  # Numérico
-                    desconto=desconto if desconto is not None else 0,  # Numérico, valor padrão 0 se None
-                    valor_total=valor_total,  # Numérico
+                    descricao=descricao,
+                    quantidade=quantidade,
+                    unidade=unidade,
+                    valor_unid=valor_unid,
+                    desconto=desconto,
+                    valor_total=valor_total,
                 )
-                print(f"Item salvo: {item_data['descricao']}")
+                print(f"Item salvo: {descricao}")
             except Exception as e:
                 print(f"Erro ao salvar o item: {item_data}. Erro: {e}")
         else:
-            print(f"Erro ao salvar o item: {item_data}. Quantidade, valor unitário ou valor total inválidos.")
+            print(f"Ignorando item inválido ou incompleto: {item_data}")
 
-    # Retorna a instância de NotaFiscal
     return nota_fiscal
-
-
-
-
 
 
 

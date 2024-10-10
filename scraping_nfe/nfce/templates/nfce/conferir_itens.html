@@ -1,37 +1,69 @@
-<table>
-    <thead>
-        <tr>
-            <th>Descrição</th>
-            <th>Quantidade</th>
-            <th>Unidade</th>
-            <th>Valor Unitário</th>
-            <th>Desconto</th>
-            <th>Valor Total</th>
-            <th>Ações</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in itens %}
-        <tr>
-            <form method="POST" action="{% url 'conferir_itens' %}">
-                {% csrf_token %}
-                <td><input type="text" name="descricao" value="{{ item.descricao }}"></td>
-                <td><input type="text" name="quantidade" value="{{ item.quantidade }}"></td>
-                <td><input type="text" name="unidade" value="{{ item.unidade }}"></td>
-                <td><input type="text" name="valor_unid" value="{{ item.valor_unid }}"></td>
-                <td><input type="text" name="desconto" value="{{ item.desconto }}"></td>
-                <td><input type="text" name="valor_total" value="{{ item.valor_total }}"></td>
-                <td>
-                    <input type="hidden" name="item_index" value="{{ forloop.counter0 }}">
-                    <button type="submit" name="editar_item">Editar</button>
-                    <button type="submit" name="excluir_item">Excluir</button>
-                </td>
-            </form>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-<form method="POST" action="{% url 'conferir_itens' %}">
-    {% csrf_token %}
-    <button type="submit" name="salvar_nota_fiscal">Salvar Nota Fiscal</button>
-</form>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conferir Itens</title>
+</head>
+<body>
+    <h1>Conferir Itens da Nota Fiscal</h1>
+
+    <form method="POST">
+        {% csrf_token %}
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Descrição</th>
+                    <th>Quantidade</th>
+                    <th>Unidade</th>
+                    <th>Valor Unitário</th>
+                    <th>Desconto</th>
+                    <th>Valor Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in itens %}
+                    <tr>
+                        <td><input type="text" name="item_descricao_{{ forloop.counter0 }}" value="{{ item.descricao }}"></td>
+                        <td><input type="text" name="item_quantidade_{{ forloop.counter0 }}" value="{{ item.quantidade }}"></td>
+                        <td><input type="text" name="item_unidade_{{ forloop.counter0 }}" value="{{ item.unidade }}"></td>
+                        <td><input type="text" name="item_valor_unid_{{ forloop.counter0 }}" value="{{ item.valor_unid }}"></td>
+                        <td><input type="text" name="item_desconto_{{ forloop.counter0 }}" value="{{ item.desconto }}"></td>
+                        <td><input type="text" name="item_valor_total_{{ forloop.counter0 }}" value="{{ item.valor_total }}"></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <h2>Informações da Nota Fiscal</h2>
+        <label for="numero_serie">Número de Série:</label>
+        <input type="text" name="numero_serie" value="{{ nota_fiscal.numero_serie }}"><br>
+
+        <label for="razao_social">Razão Social:</label>
+        <input type="text" name="razao_social" value="{{ nota_fiscal.razao_social }}"><br>
+
+        <label for="cnpj_emitente">CNPJ Emitente:</label>
+        <input type="text" name="cnpj_emitente" value="{{ nota_fiscal.cnpj_emitente }}"><br>
+
+        <label for="inscricao_estadual">Inscrição Estadual:</label>
+        <input type="text" name="inscricao_estadual" value="{{ nota_fiscal.inscricao_estadual }}"><br>
+
+        <label for="data_emissao">Data de Emissão:</label>
+        <input type="text" name="data_emissao" value="{{ nota_fiscal.data_emissao }}"><br>
+
+        <label for="data_autorizacao">Data de Autorização:</label>
+        <input type="text" name="data_autorizacao" value="{{ nota_fiscal.data_autorizacao }}"><br>
+
+        <label for="valor_total_produtos">Valor Total dos Produtos:</label>
+        <input type="text" name="valor_total_produtos" value="{{ nota_fiscal.valor_total_produtos }}"><br>
+
+        <label for="forma_pagamento">Forma de Pagamento:</label>
+        <input type="text" name="forma_pagamento" value="{{ nota_fiscal.forma_pagamento }}"><br>
+
+        <label for="chave_acesso">Chave de Acesso:</label>
+        <input type="text" name="chave_acesso" value="{{ nota_fiscal.chave_acesso }}"><br>
+
+        <button type="submit" name="salvar_nota_fiscal">Salvar Nota Fiscal</button>
+    </form>
+</body>
+</html>

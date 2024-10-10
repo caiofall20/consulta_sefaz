@@ -16,14 +16,16 @@ class NotaFiscal(models.Model):
         return f'{self.numero_serie} - {self.razao_social}'
 
 
+
 class Item(models.Model):
-    nota_fiscal = models.ForeignKey(NotaFiscal, related_name='itens', on_delete=models.CASCADE)
-    descricao = models.CharField(max_length=255)
-    quantidade = models.DecimalField(max_digits=10, decimal_places=2)
-    unidade = models.CharField(max_length=20)
-    valor_unid = models.DecimalField(max_digits=10, decimal_places=2)
-    desconto = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    valor_total = models.DecimalField(max_digits=10, decimal_places=2)
+    nota_fiscal = models.ForeignKey('NotaFiscal', on_delete=models.CASCADE, related_name='itens')
+    descricao = models.CharField(max_length=255, blank=True, default='Sem descrição')
+    quantidade = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)  # Permite valores decimais e nulos
+    unidade = models.CharField(max_length=50, blank=True, default='UN')
+    valor_unid = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    desconto = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     def __str__(self):
         return self.descricao
+

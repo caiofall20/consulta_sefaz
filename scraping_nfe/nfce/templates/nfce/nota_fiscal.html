@@ -48,7 +48,7 @@
     <p><strong>Chave de Acesso:</strong> {{ chave_acesso }}</p>
 
     <!-- Botão para redirecionar para a página de edição -->
-    <form method="get" action="{% url 'editar_itens' nota_fiscal.id %}">
+    <form method="get" action="{% url 'editar_itens' nota_fiscal_id=1 %}">
         <button type="submit">Editar Itens</button>
     </form>
 
