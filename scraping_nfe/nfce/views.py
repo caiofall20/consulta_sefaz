@@ -15,6 +15,7 @@ from django.urls import reverse
 import cv2
 from pyzbar.pyzbar import decode
 import uuid
+from .forms import NotaFiscalForm
 
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
@@ -146,7 +147,8 @@ def conferir_itens(request):
             except ValueError:
                 # Caso ocorra um erro de conversão, retorna 0.0 como valor padrão
                 return 0.0
-
+        categoria = request.POST.get('categoria', 'outros')  # Define 'outros' como padrão se não for fornecido
+        nota_fiscal_data['categoria'] = categoria
         # Atualiza os itens com os dados do formulário
         itens_data = []
         for i in range(len(nota_fiscal_data['itens'])):
@@ -156,7 +158,7 @@ def conferir_itens(request):
                 'unidade': request.POST.get(f'item_unidade_{i}'),
                 'valor_unid': ajustar_valor(request.POST.get(f'item_valor_unid_{i}')),
                 'desconto': ajustar_valor(request.POST.get(f'item_desconto_{i}')),
-                'valor_total': ajustar_valor(request.POST.get(f'item_valor_total_{i}'))
+                'valor_total': ajustar_valor(request.POST.get(f'item_valor_total_{i}')),
             })
         nota_fiscal_data['itens'] = itens_data
 
@@ -227,6 +229,45 @@ def extract_nota_info(driver):
         'chave_acesso': chave_acesso
     }
 
+def adicionar_nota_fiscal(request):
+    if request.method == 'POST':
+        descricao = request.POST.get('descricao')
+        categoria = request.POST.get('categoria')
+        valor_total = request.POST.get('valor_total')
+        data_emissao = request.POST.get('data_emissao')
+
+        # Salvar a nova nota fiscal
+        try:
+            nota_fiscal = NotaFiscal.objects.create(
+                categoria=categoria,
+                numero_serie='Manual',
+                razao_social='Nota Manual',
+                cnpj_emitente='N/A',
+                inscricao_estadual='N/A',
+                data_emissao=data_emissao,
+                valor_total_produtos=valor_total,
+                forma_pagamento='Manual',
+                chave_acesso='Manual',
+            )
+            
+            # Criar um item associado à nota fiscal
+            Item.objects.create(
+                nota_fiscal=nota_fiscal,
+                descricao=descricao,
+                quantidade=1,
+                unidade='UN',
+                valor_unid=valor_total,
+                desconto=0.0,
+                valor_total=valor_total,
+            )
+
+            return redirect('listar_notas_fiscais')
+        except Exception as e:
+            return HttpResponse(f"Erro ao adicionar nota fiscal manual: {e}")
+
+    return HttpResponse("Método não permitido", status=405)
+
+
 def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
     # Função auxiliar para converter valores com vírgula em valores decimais e garantir que não sejam nulos
     def converter_valor_decimal(valor):
@@ -244,8 +285,17 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
     nota_fiscal_data['valor_total_produtos'] = converter_valor_decimal(nota_fiscal_data['valor_total_produtos'])
 
     try:
+        # Verifica se a categoria está presente no nota_fiscal_data
+        categoria = nota_fiscal_data.get('categoria', None)
+        
+        # Caso a categoria não tenha sido passada, define um valor padrão
+        if not categoria:
+            print("Categoria não fornecida, utilizando valor padrão 'Outros'")
+            categoria = 'Outros'
+
         # Salva a nota fiscal no banco
         nota_fiscal = NotaFiscal.objects.create(
+            categoria=categoria,
             numero_serie=nota_fiscal_data['numero_serie'],
             razao_social=nota_fiscal_data['razao_social'],
             cnpj_emitente=nota_fiscal_data['cnpj_emitente'],
@@ -256,7 +306,7 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
             forma_pagamento=nota_fiscal_data['forma_pagamento'],
             chave_acesso=nota_fiscal_data['chave_acesso'],
         )
-        print(f"Nota Fiscal salva com ID: {nota_fiscal.id}")
+        print(f"Nota Fiscal salva com ID: {nota_fiscal.id} e categoria: {categoria}")
     except Exception as e:
         print(f"Erro ao salvar a nota fiscal: {e}")
         return None
@@ -289,6 +339,7 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
             print(f"Ignorando item inválido ou incompleto: {item_data}")
 
     return nota_fiscal
+
 
 
 

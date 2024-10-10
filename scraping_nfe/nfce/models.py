@@ -2,6 +2,22 @@
 from django.db import models
 
 class NotaFiscal(models.Model):
+
+    CATEGORIAS_CHOICES = [
+        ('alimentacao', 'Alimentação'),
+        ('transporte', 'Transporte'),
+        ('lazer', 'Lazer'),
+        ('saude', 'Saúde'),
+        ('educacao', 'Educação'),
+        ('outros', 'Outros'),
+    ]
+
+    SUBCATEGORIAS_TRANSPORTE_CHOICES = [
+        ('gasolina', 'Gasolina'),
+        ('manutencao', 'Manutenção'),
+        ('outros', 'Outros'),
+    ]
+    
     numero_serie = models.CharField(max_length=50)
     razao_social = models.CharField(max_length=255)
     cnpj_emitente = models.CharField(max_length=50)
@@ -11,6 +27,8 @@ class NotaFiscal(models.Model):
     valor_total_produtos = models.DecimalField(max_digits=10, decimal_places=2)
     forma_pagamento = models.CharField(max_length=100)
     chave_acesso = models.CharField(max_length=100)
+    categoria = models.CharField(max_length=50, choices=CATEGORIAS_CHOICES, default='outros')
+    subcategoria_transporte = models.CharField(max_length=50, choices=SUBCATEGORIAS_TRANSPORTE_CHOICES, null=True, blank=True)
 
     def __str__(self):
         return f'{self.numero_serie} - {self.razao_social}'

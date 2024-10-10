@@ -25,5 +25,32 @@
         <input type="text" id="chave_acesso" name="chave_acesso" required>
         <button type="submit">Enviar</button>
     </form>
+
+    <form method="POST" action="{% url 'adicionar_nota_fiscal' %}">
+    {% csrf_token %}
+    <h3>Adicionar Nota Fiscal Manualmente</h3>
+    
+    <label for="descricao">Descrição:</label>
+    <input type="text" name="descricao" id="descricao" required>
+
+    <label for="categoria">Categoria:</label>
+    <select name="categoria" id="categoria">
+        <option value="alimentacao">Alimentação</option>
+        <option value="transporte">Transporte</option>
+        <option value="lazer">Lazer</option>
+        <option value="saude">Saúde</option>
+        <option value="educacao">Educação</option>
+        <option value="outros">Outros</option>
+    </select>
+
+    <label for="valor_total">Valor Total (R$):</label>
+    <input type="number" name="valor_total" id="valor_total" step="0.01" required>
+
+    <label for="data_emissao">Data de Emissão:</label>
+    <input type="date" name="data_emissao" id="data_emissao" required>
+
+    <button type="submit">Adicionar Nota Fiscal</button>
+</form>
+
 </body>
 </html>

@@ -36,6 +36,36 @@
         </table>
         
         <h2>Informações da Nota Fiscal</h2>
+<label for="categoria">Categoria:</label>
+<select name="categoria" id="categoria" onchange="toggleSubcategoria()">
+    <option value="alimentacao">Alimentação</option>
+    <option value="transporte">Transporte</option>
+    <option value="lazer">Lazer</option>
+    <option value="saude">Saúde</option>
+    <option value="educacao">Educação</option>
+    <option value="outros">Outros</option>
+</select>
+
+<div id="subcategoriaTransporte" style="display: none;">
+    <label for="subcategoria_transporte">Subcategoria de Transporte:</label>
+    <select name="subcategoria_transporte" id="subcategoria_transporte">
+        <option value="gasolina">Gasolina</option>
+        <option value="manutencao">Manutenção</option>
+        <option value="outros">Outros</option>
+    </select>
+</div>
+
+<script>
+    function toggleSubcategoria() {
+        const categoria = document.getElementById('categoria').value;
+        const subcategoriaDiv = document.getElementById('subcategoriaTransporte');
+        if (categoria === 'transporte') {
+            subcategoriaDiv.style.display = 'block';
+        } else {
+            subcategoriaDiv.style.display = 'none';
+        }
+    }
+</script>
         <label for="numero_serie">Número de Série:</label>
         <input type="text" name="numero_serie" value="{{ nota_fiscal.numero_serie }}"><br>
 

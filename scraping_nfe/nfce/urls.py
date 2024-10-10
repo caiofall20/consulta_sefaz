@@ -11,6 +11,7 @@ urlpatterns = [
     path('nota_fiscal/<int:nota_fiscal_id>/editar/', views.editar_itens, name='editar_itens'),
     path('conferir_itens/', views.conferir_itens, name='conferir_itens'),
     path('listar_notas_fiscais/', views.listar_notas_fiscais, name='listar_notas_fiscais'),  # URL para listar notas fiscais
+    path('adicionar_nota_fiscal/', views.adicionar_nota_fiscal, name='adicionar_nota_fiscal'),
 
 
 
