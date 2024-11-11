@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bem-vindo ao Sistema de Gestão Financeira</title>
+    {% load static %}
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom Styles -->
+    <style>
+        body {
+            background: linear-gradient(180deg, #FFA726 10%, #B0BEC5 30%, #7D3C98 90%); /* Gradiente laranja -> cinza -> roxo */
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .intro-container {
+            text-align: center;
+            padding: 20px;
+            width: 100%; /* Ocupa toda a largura */
+        }
+
+        .intro-container img {
+            max-width: 500px; /* Defina o tamanho da imagem */
+            height: auto;
+            margin-bottom: 30px;
+        }
+
+        .intro-container h2 {
+            color: white;
+            font-size: 1.8rem;
+            margin-top: 20px;
+        }
+
+        .intro-container p {
+            color: white;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+
+        .btn-login, .btn-signup {
+            padding: 10px 30px;
+            border-radius: 30px;
+            margin: 10px;
+            width: 130px;
+        }
+
+        .btn-login {
+            background-color: #7D3C98; /* Primária (Roxo) */
+            color: white;
+            border: none;
+        }
+
+        .btn-login:hover {
+            background-color: #5E2E73;
+        }
+
+        .btn-signup {
+            background-color: white;
+            color: #7D3C98; /* Primária (Roxo) */
+            border: 2px solid #7D3C98;
+        }
+
+        .btn-signup:hover {
+            background-color: #7D3C98;
+            color: white;
+            border: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="intro-container">
+        <img src="{% static 'images/main-body.png' %}" alt="Introdução">
+    
+        <a href="{% url 'login' %}" class="btn btn-login">Login</a>
+        <a href="{% url 'cadastro' %}" class="btn btn-signup">Cadastrar</a>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

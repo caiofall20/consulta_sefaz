@@ -16,9 +16,12 @@ import cv2
 from pyzbar.pyzbar import decode
 import uuid
 from .forms import NotaFiscalForm
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
 
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
+@login_required
 def index(request):
     if request.method == 'POST':
         # Checa se o usuário quer escanear o QR code
@@ -38,7 +41,9 @@ def index(request):
             return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
 
     return render(request, 'nfce/index.html')
-
+def dashboard_view(request):
+    # Redireciona o usuário para o dashboard do Streamlit que está rodando no localhost
+    return redirect('http://localhost:8501/')
 def escanear_qr_code_com_camera():
     cap = cv2.VideoCapture(0)  # Abre a câmera
 
@@ -128,7 +133,7 @@ def process_captcha(request, qr_code_url):
     driver.quit()
     return HttpResponse("Erro ao processar o CAPTCHA. Tente novamente.")
 
-
+@login_required
 def conferir_itens(request):
     # Obtém os dados da nota fiscal salvos na sessão (sem ID do banco)
     nota_fiscal_data = request.session.get('nota_fiscal_data', None)
@@ -166,7 +171,7 @@ def conferir_itens(request):
         salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data)
 
         # Redirecionar para a página de listagem de notas fiscais após salvar
-        return redirect('listar_notas_fiscais')
+        return redirect('/')
 
     # Exibe a página de conferência
     return render(request, 'nfce/conferir_itens.html', {
@@ -261,7 +266,7 @@ def adicionar_nota_fiscal(request):
                 valor_total=valor_total,
             )
 
-            return redirect('listar_notas_fiscais')
+            return redirect('index')
         except Exception as e:
             return HttpResponse(f"Erro ao adicionar nota fiscal manual: {e}")
 
@@ -345,7 +350,7 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
 
 def listar_notas_fiscais(request):
     notas_fiscais = NotaFiscal.objects.all()
-    return render(request, 'nfce/nota_fiscal.html', {'notas_fiscais': notas_fiscais})
+    return render(request, 'index', {'notas_fiscais': notas_fiscais})
 
 def editar_itens(request, nota_fiscal_id):
     # Obtém a nota fiscal pelo ID
@@ -371,7 +376,7 @@ def editar_itens(request, nota_fiscal_id):
 
         elif 'salvar_nota_fiscal' in request.POST:
             # Confirmar o salvamento e redirecionar para a listagem de notas
-            return redirect('listar_notas_fiscais')
+            return redirect('index')
 
     form = ItemForm()  # Formulário vazio apenas para exibir no template, mas não será utilizado para adicionar novos itens
     return render(request, 'nfce/editar_itens.html', {
@@ -391,3 +396,15 @@ def nota_fiscal_view(request, nota_fiscal_id):
         'nota_fiscal': nota_fiscal,
         'itens': nota_fiscal.itens.all(),  # Assume que 'itens' é um relacionamento ManyToMany ou ForeignKey no modelo
     })
+def inicio_view(request):
+    return render(request, 'nfce/inicio.html') 
+def cadastro_view(request):
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('login')  # Redireciona o usuário para a página de login após o cadastro
+    else:
+        form = UserCreationForm()
+    
+    return render(request, 'nfce/cadastro.html', {'form': form})

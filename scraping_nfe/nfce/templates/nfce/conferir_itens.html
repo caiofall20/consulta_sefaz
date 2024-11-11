@@ -3,14 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferir Itens</title>
+    <title>Conferir Itens da Nota Fiscal</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Custom Styles -->
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: #f0f0f0;
+        }
+        .container {
+            max-width: 900px;
+            background: #2c2f33;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            margin-top: 40px;
+            margin-bottom: 40px;
+            color: #f0f0f0;
+        }
+        h1, h2 {
+            color: #ffffff;
+            text-align: center;
+        }
+        h2 {
+            margin-top: 30px;
+        }
+        label {
+            font-weight: bold;
+            color: #f0f0f0;
+        }
+        table {
+            width: 100%;
+            margin-bottom: 20px;
+            color: #f0f0f0;
+        }
+        table th, table td {
+            padding: 10px;
+            text-align: center;
+        }
+        table th {
+            background-color: #444851;
+            color: #f0f0f0;
+        }
+        table td input {
+            width: 100%;
+            padding: 5px;
+            background-color: #444851;
+            color: #f0f0f0;
+            border: 1px solid #555555;
+        }
+        .btn-primary, .btn-success {
+            width: 100%;
+            margin-top: 20px;
+        }
+        .form-control, .form-select {
+            margin-bottom: 15px;
+            background-color: #444851;
+            color: #f0f0f0;
+        }
+        .form-select {
+            width: 100%;
+        }
+        .fa-save {
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Conferir Itens da Nota Fiscal</h1>
+
+<div class="container">
+    <h1><i class="fas fa-clipboard-check"></i> Conferir Itens da Nota Fiscal</h1>
 
     <form method="POST">
         {% csrf_token %}
-        <table border="1">
+        <table class="table table-hover">
             <thead>
                 <tr>
                     <th>Descrição</th>
@@ -34,66 +111,93 @@
                 {% endfor %}
             </tbody>
         </table>
-        
-        <h2>Informações da Nota Fiscal</h2>
-<label for="categoria">Categoria:</label>
-<select name="categoria" id="categoria" onchange="toggleSubcategoria()">
-    <option value="alimentacao">Alimentação</option>
-    <option value="transporte">Transporte</option>
-    <option value="lazer">Lazer</option>
-    <option value="saude">Saúde</option>
-    <option value="educacao">Educação</option>
-    <option value="outros">Outros</option>
-</select>
 
-<div id="subcategoriaTransporte" style="display: none;">
-    <label for="subcategoria_transporte">Subcategoria de Transporte:</label>
-    <select name="subcategoria_transporte" id="subcategoria_transporte">
-        <option value="gasolina">Gasolina</option>
-        <option value="manutencao">Manutenção</option>
-        <option value="outros">Outros</option>
-    </select>
+        <h2>Informações da Nota Fiscal</h2>
+
+        <div class="mb-3">
+            <label for="categoria">Categoria:</label>
+            <select name="categoria" id="categoria" class="form-select" onchange="toggleSubcategoria()">
+                <option value="alimentacao">Alimentação</option>
+                <option value="transporte">Transporte</option>
+                <option value="lazer">Lazer</option>
+                <option value="saude">Saúde</option>
+                <option value="educacao">Educação</option>
+                <option value="outros">Outros</option>
+            </select>
+        </div>
+
+        <div id="subcategoriaTransporte" class="mb-3" style="display: none;">
+            <label for="subcategoria_transporte">Subcategoria de Transporte:</label>
+            <select name="subcategoria_transporte" id="subcategoria_transporte" class="form-select">
+                <option value="gasolina">Gasolina</option>
+                <option value="manutencao">Manutenção</option>
+                <option value="outros">Outros</option>
+            </select>
+        </div>
+
+        <script>
+            function toggleSubcategoria() {
+                const categoria = document.getElementById('categoria').value;
+                const subcategoriaDiv = document.getElementById('subcategoriaTransporte');
+                if (categoria === 'transporte') {
+                    subcategoriaDiv.style.display = 'block';
+                } else {
+                    subcategoriaDiv.style.display = 'none';
+                }
+            }
+        </script>
+
+        <div class="mb-3">
+            <label for="numero_serie" class="form-label">Número de Série:</label>
+            <input type="text" name="numero_serie" id="numero_serie" class="form-control" value="{{ nota_fiscal.numero_serie }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="razao_social" class="form-label">Razão Social:</label>
+            <input type="text" name="razao_social" id="razao_social" class="form-control" value="{{ nota_fiscal.razao_social }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="cnpj_emitente" class="form-label">CNPJ Emitente:</label>
+            <input type="text" name="cnpj_emitente" id="cnpj_emitente" class="form-control" value="{{ nota_fiscal.cnpj_emitente }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="inscricao_estadual" class="form-label">Inscrição Estadual:</label>
+            <input type="text" name="inscricao_estadual" id="inscricao_estadual" class="form-control" value="{{ nota_fiscal.inscricao_estadual }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="data_emissao" class="form-label">Data de Emissão:</label>
+            <input type="text" name="data_emissao" id="data_emissao" class="form-control" value="{{ nota_fiscal.data_emissao }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="data_autorizacao" class="form-label">Data de Autorização:</label>
+            <input type="text" name="data_autorizacao" id="data_autorizacao" class="form-control" value="{{ nota_fiscal.data_autorizacao }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="valor_total_produtos" class="form-label">Valor Total dos Produtos:</label>
+            <input type="text" name="valor_total_produtos" id="valor_total_produtos" class="form-control" value="{{ nota_fiscal.valor_total_produtos }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="forma_pagamento" class="form-label">Forma de Pagamento:</label>
+            <input type="text" name="forma_pagamento" id="forma_pagamento" class="form-control" value="{{ nota_fiscal.forma_pagamento }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="chave_acesso" class="form-label">Chave de Acesso:</label>
+            <input type="text" name="chave_acesso" id="chave_acesso" class="form-control" value="{{ nota_fiscal.chave_acesso }}">
+        </div>
+
+        <button type="submit" name="salvar_nota_fiscal" class="btn btn-success"><i class="fas fa-save"></i> Salvar Nota Fiscal</button>
+    </form>
 </div>
 
-<script>
-    function toggleSubcategoria() {
-        const categoria = document.getElementById('categoria').value;
-        const subcategoriaDiv = document.getElementById('subcategoriaTransporte');
-        if (categoria === 'transporte') {
-            subcategoriaDiv.style.display = 'block';
-        } else {
-            subcategoriaDiv.style.display = 'none';
-        }
-    }
-</script>
-        <label for="numero_serie">Número de Série:</label>
-        <input type="text" name="numero_serie" value="{{ nota_fiscal.numero_serie }}"><br>
+<!-- Bootstrap JS and dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 
-        <label for="razao_social">Razão Social:</label>
-        <input type="text" name="razao_social" value="{{ nota_fiscal.razao_social }}"><br>
-
-        <label for="cnpj_emitente">CNPJ Emitente:</label>
-        <input type="text" name="cnpj_emitente" value="{{ nota_fiscal.cnpj_emitente }}"><br>
-
-        <label for="inscricao_estadual">Inscrição Estadual:</label>
-        <input type="text" name="inscricao_estadual" value="{{ nota_fiscal.inscricao_estadual }}"><br>
-
-        <label for="data_emissao">Data de Emissão:</label>
-        <input type="text" name="data_emissao" value="{{ nota_fiscal.data_emissao }}"><br>
-
-        <label for="data_autorizacao">Data de Autorização:</label>
-        <input type="text" name="data_autorizacao" value="{{ nota_fiscal.data_autorizacao }}"><br>
-
-        <label for="valor_total_produtos">Valor Total dos Produtos:</label>
-        <input type="text" name="valor_total_produtos" value="{{ nota_fiscal.valor_total_produtos }}"><br>
-
-        <label for="forma_pagamento">Forma de Pagamento:</label>
-        <input type="text" name="forma_pagamento" value="{{ nota_fiscal.forma_pagamento }}"><br>
-
-        <label for="chave_acesso">Chave de Acesso:</label>
-        <input type="text" name="chave_acesso" value="{{ nota_fiscal.chave_acesso }}"><br>
-
-        <button type="submit" name="salvar_nota_fiscal">Salvar Nota Fiscal</button>
-    </form>
 </body>
 </html>
