@@ -18,32 +18,139 @@ import uuid
 from .forms import NotaFiscalForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import logout
+from django.contrib import messages
+import numpy as np
+import os
 
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 @login_required
 def index(request):
     if request.method == 'POST':
-        # Checa se o usuário quer escanear o QR code
-        if 'escanear_qr_code' in request.POST:
-            qr_code_url = escanear_qr_code_com_camera()
-            if qr_code_url:
-                qr_code_url_encoded = urllib.parse.quote(qr_code_url, safe='')
-                return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
-            else:
-                return HttpResponse('QR Code não encontrado ou leitura falhou.')
-        
         # Caso o usuário insira a chave de acesso manualmente
         chave_acesso = request.POST.get('chave_acesso')
         if chave_acesso:
+            # Verifica se a nota fiscal já existe
+            nota_existente = NotaFiscal.objects.filter(chave_acesso=chave_acesso).first()
+            if nota_existente:
+                messages.warning(request, 'Esta nota fiscal já está cadastrada no sistema.')
+                return redirect('index')
+
+            # Se não existe, continua com o processamento
             qr_code_url = f"http://nfce.set.rn.gov.br/portalDFE/NFCe/mDadosNFCe.aspx?p={chave_acesso}"
             qr_code_url_encoded = urllib.parse.quote(qr_code_url, safe='')
             return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
 
+        # Caso o usuário queira escanear o QR code
+        if 'escanear_qr_code' in request.POST:
+            cap = None
+            try:
+                # Configurar variáveis de ambiente para X11
+                os.environ.pop('QT_QPA_PLATFORM', None)  # Remove configuração do Qt
+                os.environ['DISPLAY'] = ':0'  # Força uso do X11
+                
+                cap = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                    raise Exception("Não foi possível acessar a câmera")
+                
+                detector = cv2.QRCodeDetector()
+                window_name = 'QRCode Scanner (Pressione Q para sair)'
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(window_name, 800, 600)
+
+                while True:
+                    ret, img = cap.read()
+                    if not ret:
+                        raise Exception("Erro ao ler frame da câmera")
+
+                    data, bbox, _ = detector.detectAndDecode(img)
+                    
+                    if data:
+                        # Extrai a chave de acesso da URL do QR code
+                        parsed_url = urllib.parse.urlparse(data)
+                        query_params = urllib.parse.parse_qs(parsed_url.query)
+                        chave_acesso = query_params.get('p', [None])[0]
+
+                        if chave_acesso:
+                            # Verifica se a nota fiscal já existe
+                            nota_existente = NotaFiscal.objects.filter(chave_acesso=chave_acesso).first()
+                            if nota_existente:
+                                if cap is not None:
+                                    cap.release()
+                                cv2.destroyAllWindows()
+                                request.session['mensagem_nota_duplicada'] = True
+                                return redirect('index')
+
+                            # Se não existe, continua com o processamento
+                            qr_code_url = f"http://nfce.set.rn.gov.br/portalDFE/NFCe/mDadosNFCe.aspx?p={chave_acesso}"
+                            qr_code_url_encoded = urllib.parse.quote(qr_code_url, safe='')
+                            return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
+
+                    cv2.imshow(window_name, img)
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord('q'):
+                        break
+
+            except Exception as e:
+                messages.error(request, f'Erro ao escanear QR Code: {str(e)}')
+            finally:
+                # Garante que a câmera seja fechada mesmo se houver erro
+                if cap is not None:
+                    cap.release()
+                cv2.destroyAllWindows()
+                return redirect('index')
+
+    if request.session.pop('mensagem_nota_duplicada', False):
+        messages.warning(request, 'Esta nota fiscal já está cadastrada no sistema.')
     return render(request, 'nfce/index.html')
+
+@login_required
+def process_qr_code(request):
+    if request.method == 'POST' and request.FILES.get('qr_code'):
+        try:
+            # Lê a imagem do QR code
+            image_file = request.FILES['qr_code']
+            image = cv2.imdecode(np.frombuffer(image_file.read(), np.uint8), cv2.IMREAD_COLOR)
+
+            # Decodifica o QR code
+            detector = cv2.QRCodeDetector()
+            data, bbox, _ = detector.detectAndDecode(image)
+
+            if data:
+                # Extrai a chave de acesso da URL do QR code
+                parsed_url = urllib.parse.urlparse(data)
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                chave_acesso = query_params.get('p', [None])[0]
+
+                if chave_acesso:
+                    # Verifica se a nota fiscal já existe
+                    nota_existente = NotaFiscal.objects.filter(chave_acesso=chave_acesso).first()
+                    if nota_existente:
+                        messages.warning(request, 'Esta nota fiscal já está cadastrada no sistema!')
+                        return redirect('index')
+
+                    # Se não existe, continua com o processamento
+                    qr_code_url_encoded = urllib.parse.quote(data, safe='')
+                    return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
+                else:
+                    messages.error(request, 'QR Code inválido: chave de acesso não encontrada.')
+                    return redirect('index')
+            else:
+                messages.error(request, 'Não foi possível ler o QR Code. Por favor, tente novamente.')
+                return redirect('index')
+
+        except Exception as e:
+            messages.error(request, f'Erro ao processar o QR Code: {str(e)}')
+            return redirect('index')
+
+    messages.error(request, 'Método não permitido ou nenhum arquivo enviado.')
+    return redirect('index')
+
 def dashboard_view(request):
     # Redireciona o usuário para o dashboard do Streamlit que está rodando no localhost
     return redirect('http://localhost:8501/')
+
 def escanear_qr_code_com_camera():
     cap = cv2.VideoCapture(0)  # Abre a câmera
 
@@ -167,8 +274,14 @@ def conferir_itens(request):
             })
         nota_fiscal_data['itens'] = itens_data
 
-        # Salva a nota fiscal e os itens no banco de dados
-        salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data)
+        # Tenta salvar a nota fiscal e os itens no banco de dados
+        nota_fiscal = salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data)
+        
+        if nota_fiscal is None:
+            # Se retornou None, significa que a nota fiscal já existe
+            messages.warning(request, 'Esta nota fiscal já está cadastrada no sistema.')
+        else:
+            messages.success(request, 'Nota fiscal salva com sucesso!')
 
         # Redirecionar para a página de listagem de notas fiscais após salvar
         return redirect('/')
@@ -290,6 +403,12 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
     nota_fiscal_data['valor_total_produtos'] = converter_valor_decimal(nota_fiscal_data['valor_total_produtos'])
 
     try:
+        # Verifica se já existe uma nota fiscal com a mesma chave de acesso
+        chave_acesso = nota_fiscal_data.get('chave_acesso')
+        if NotaFiscal.objects.filter(chave_acesso=chave_acesso).exists():
+            print(f"Nota fiscal com chave de acesso {chave_acesso} já existe no sistema.")
+            return None
+
         # Verifica se a categoria está presente no nota_fiscal_data
         categoria = nota_fiscal_data.get('categoria', None)
         
@@ -309,7 +428,7 @@ def salvar_nota_fiscal_e_itens(nota_fiscal_data, itens_data):
             data_autorizacao=nota_fiscal_data['data_autorizacao'],
             valor_total_produtos=nota_fiscal_data['valor_total_produtos'],
             forma_pagamento=nota_fiscal_data['forma_pagamento'],
-            chave_acesso=nota_fiscal_data['chave_acesso'],
+            chave_acesso=chave_acesso,
         )
         print(f"Nota Fiscal salva com ID: {nota_fiscal.id} e categoria: {categoria}")
     except Exception as e:
@@ -385,7 +504,24 @@ def editar_itens(request, nota_fiscal_id):
         'form': form
     })
 
+@login_required
+def consultar_nfce(request):
+    if request.method == 'POST':
+        # Caso o usuário insira a chave de acesso manualmente
+        chave_acesso = request.POST.get('chave_acesso', '').strip()
+        if chave_acesso:
+            # Verifica se a nota fiscal já existe
+            nota_existente = NotaFiscal.objects.filter(chave_acesso=chave_acesso).first()
+            if nota_existente:
+                messages.warning(request, 'Esta nota fiscal já está cadastrada no sistema.')
+                return redirect('index')
 
+            # Se não existe, continua com o processamento
+            qr_code_url = f"http://nfce.set.rn.gov.br/portalDFE/NFCe/mDadosNFCe.aspx?p={chave_acesso}"
+            qr_code_url_encoded = urllib.parse.quote(qr_code_url, safe='')
+            return redirect('process_captcha', qr_code_url=qr_code_url_encoded)
+
+    return render(request, 'nfce/index.html')
 
 def nota_fiscal_view(request, nota_fiscal_id):
     # Obtém a nota fiscal pelo ID passado como argumento
@@ -408,3 +544,10 @@ def cadastro_view(request):
         form = UserCreationForm()
     
     return render(request, 'nfce/cadastro.html', {'form': form})
+
+@login_required
+def logout_view(request):
+    if request.method == 'POST':
+        logout(request)
+        return redirect('login')
+    return render(request, 'nfce/logout.html')

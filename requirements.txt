@@ -9,3 +9,6 @@ psycopg2-binary
 streamlit
 matplotlib
 plotly
+opencv-python
+opencv-python-headless
+plotly

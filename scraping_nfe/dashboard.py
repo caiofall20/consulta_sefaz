@@ -53,10 +53,6 @@ def carregar_dados():
     # Converte a coluna 'data_emissao' para o formato datetime
     df_notas['data_emissao'] = pd.to_datetime(df_notas['data_emissao'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
 
-    # Verificar os dados carregados
-    #st.write("Dados carregados dos itens:", df_itens.head())  # Exibir as primeiras linhas dos itens
-    #st.write("Dados carregados das notas fiscais:", df_notas.head())  # Exibir as primeiras linhas das notas fiscais
-    
     # Combinar os dados dos itens e das notas fiscais (se necessário, pode-se realizar merges ou joins)
     df_combinado = pd.concat([df_itens, df_notas], axis=0, ignore_index=True)
     
@@ -64,10 +60,32 @@ def carregar_dados():
 
 # Função para calcular os indicadores de gasto mensal
 def calcular_gastos_mensais(df):
-    # Agrupa os dados por mês/ano para calcular o gasto mensal
-    gasto_mensal = df.groupby(df['data_emissao'].dt.to_period('M'))['valor_total'].sum().reset_index()
-    gasto_mensal.rename(columns={'valor_total': 'Gasto Total'}, inplace=True)
-    return gasto_mensal
+    if df.empty:
+        return pd.DataFrame()
+        
+    try:
+        # Converter a coluna de data para datetime se necessário
+        df['data_emissao'] = pd.to_datetime(df['data_emissao'])
+        
+        # Criar uma coluna com o primeiro dia de cada mês
+        df['mes'] = df['data_emissao'].dt.to_period('M').astype(str)
+        
+        # Agrupa os dados por mês para calcular o gasto mensal
+        gasto_mensal = df.groupby('mes')['valor_total'].sum().reset_index()
+        
+        # Converter a coluna 'mes' de volta para datetime
+        gasto_mensal['mes'] = pd.to_datetime(gasto_mensal['mes'])
+        
+        # Renomear as colunas
+        gasto_mensal.columns = ['data_emissao', 'valor_total']
+        
+        # Ordenar por data
+        gasto_mensal = gasto_mensal.sort_values('data_emissao')
+        
+        return gasto_mensal
+    except Exception as e:
+        st.error(f"Erro ao calcular gastos mensais: {str(e)}")
+        return pd.DataFrame()
 
 # Função para calcular o gasto total e a média de gastos
 def calcular_indicadores(df):
@@ -100,144 +118,364 @@ def comparar_precos(df_filtrado):
     precos_comparacao = df_filtrado.groupby(['descricao', 'razao_social'])['valor_total'].mean().unstack().fillna(0)
     return precos_comparacao
 
+# Função para gerar sugestões de economia
+def gerar_sugestoes_economia(df_filtrado):
+    try:
+        # Criar uma cópia do DataFrame para evitar alterações no original
+        df = df_filtrado.copy()
+
+        # Converter colunas para numérico e calcular valor unitário
+        df['valor_total'] = pd.to_numeric(df['valor_total'], errors='coerce')
+        df['quantidade'] = pd.to_numeric(df['quantidade'], errors='coerce')
+        df['valor_unitario'] = df['valor_total'] / df['quantidade']
+
+        # Remover valores inválidos
+        df = df[df['valor_unitario'] > 0]
+
+        # Agrupar por produto e estabelecimento
+        precos_medios = df.groupby(['descricao', 'razao_social'])['valor_unitario'].mean().reset_index()
+        
+        # Encontrar produtos similares
+        grupos_similares = encontrar_produtos_similares(precos_medios)
+        
+        # Organizar sugestões por estabelecimento
+        sugestoes = {}
+        comparacoes = []
+        
+        # Para cada grupo de produtos similares, verificar diferenças de preço
+        for desc_base, produtos in grupos_similares.items():
+            if len(produtos) > 1:  # Se o mesmo produto aparece em lugares diferentes
+                precos = [(p['razao_social'], p['valor_unitario'], p['descricao']) for p in produtos]
+                precos.sort(key=lambda x: x[1])  # Ordenar por preço
+                
+                # Se há diferença de pelo menos 5%
+                if precos[-1][1] > precos[0][1] * 1.05:
+                    economia = precos[-1][1] - precos[0][1]
+                    economia_percentual = (economia / precos[-1][1]) * 100
+                    comparacoes.append({
+                        'produto_base': desc_base,
+                        'melhor_preco': {
+                            'estabelecimento': precos[0][0],
+                            'preco': precos[0][1],
+                            'descricao': precos[0][2]
+                        },
+                        'pior_preco': {
+                            'estabelecimento': precos[-1][0],
+                            'preco': precos[-1][1],
+                            'descricao': precos[-1][2]
+                        },
+                        'economia_percentual': economia_percentual
+                    })
+        
+        # Para cada estabelecimento, pegar seus produtos mais baratos
+        for estabelecimento in precos_medios['razao_social'].unique():
+            produtos_estabelecimento = precos_medios[precos_medios['razao_social'] == estabelecimento]
+            produtos_ordenados = produtos_estabelecimento.sort_values('valor_unitario')
+            melhores_produtos = produtos_ordenados.head(5)
+            
+            sugestoes[estabelecimento] = [
+                {
+                    'produto': row['descricao'],
+                    'preco': row['valor_unitario']
+                }
+                for _, row in melhores_produtos.iterrows()
+            ]
+        
+        return sugestoes, comparacoes
+
+    except Exception as e:
+        st.error(f"Erro ao gerar sugestões: {str(e)}")
+        return {}, []
+
+def limpar_descricao(descricao):
+    """Remove variações comuns na descrição do produto."""
+    # Converter para minúsculo
+    desc = descricao.lower()
+    
+    # Remover variações de embalagem
+    desc = desc.replace(' - 1x', ' ').replace('1x', '')
+    desc = desc.replace('refri ', 'refrig ')  # Padronizar refrigerante
+    
+    # Remover caracteres especiais e espaços extras
+    import re
+    desc = re.sub(r'[^\w\s]', ' ', desc)
+    desc = ' '.join(desc.split())
+    
+    return desc
+
+def encontrar_produtos_similares(produtos_df):
+    """Agrupa produtos similares baseado na descrição."""
+    grupos_similares = {}
+    
+    for _, row in produtos_df.iterrows():
+        desc_original = row['descricao']
+        desc_limpa = limpar_descricao(desc_original)
+        
+        # Procurar por um grupo existente que contenha uma descrição similar
+        grupo_encontrado = False
+        for grupo_key in grupos_similares:
+            # Melhorar a lógica de comparação
+            palavras_grupo = set(grupo_key.split())
+            palavras_desc = set(desc_limpa.split())
+            palavras_comuns = palavras_grupo & palavras_desc
+            
+            # Se tiver pelo menos 70% de palavras em comum
+            if len(palavras_comuns) >= min(len(palavras_grupo), len(palavras_desc)) * 0.7:
+                grupos_similares[grupo_key].append({
+                    'descricao': desc_original,
+                    'razao_social': row['razao_social'],
+                    'valor_unitario': row['valor_unitario']
+                })
+                grupo_encontrado = True
+                break
+        
+        # Se não encontrou grupo similar, criar um novo
+        if not grupo_encontrado:
+            grupos_similares[desc_limpa] = [{
+                'descricao': desc_original,
+                'razao_social': row['razao_social'],
+                'valor_unitario': row['valor_unitario']
+            }]
+    
+    return grupos_similares
+
+# Função para exibir as sugestões de economia
+def exibir_sugestoes(df_filtrado):
+    try:
+        if df_filtrado.empty:
+            st.info("Não há dados disponíveis para gerar sugestões de economia.")
+            return
+
+        sugestoes, comparacoes = gerar_sugestoes_economia(df_filtrado)
+
+        # Exibir comparações de preços entre estabelecimentos
+        if comparacoes:
+            st.markdown("### 💡 Oportunidades de Economia")
+            for comp in comparacoes:
+                economia = comp['pior_preco']['preco'] - comp['melhor_preco']['preco']
+                st.markdown(f"""
+                **{comp['produto_base'].title()}**
+                - ✅ Melhor preço: R$ {comp['melhor_preco']['preco']:.2f} em {comp['melhor_preco']['estabelecimento']}
+                - ❌ Preço mais alto: R$ {comp['pior_preco']['preco']:.2f} em {comp['pior_preco']['estabelecimento']}
+                - 💰 Economia possível: R$ {economia:.2f} ({comp['economia_percentual']:.1f}%)
+                """)
+            st.markdown("---")
+
+        # Exibir produtos mais baratos por estabelecimento
+        if not sugestoes:
+            st.info("Não foram encontradas sugestões de preços para os estabelecimentos.")
+            return
+
+        st.markdown("### 🏪 Melhores Preços por Estabelecimento")
+        
+        # Criar colunas para mostrar estabelecimentos lado a lado
+        num_estabelecimentos = len(sugestoes)
+        if num_estabelecimentos > 0:
+            colunas = st.columns(min(num_estabelecimentos, 3))  # Máximo de 3 colunas
+            
+            for idx, (estabelecimento, produtos) in enumerate(sugestoes.items()):
+                col_idx = idx % 3  # Garante que voltamos à primeira coluna após 3 estabelecimentos
+                with colunas[col_idx]:
+                    st.markdown(f"#### {estabelecimento}")
+                    st.markdown("🏷️ **Top 5 Melhores Preços:**")
+                    
+                    for i, produto in enumerate(produtos, 1):
+                        preco = produto['preco']
+                        nome_produto = produto['produto']
+                        
+                        # Criar uma caixa estilizada para cada produto
+                        st.markdown(f"""
+                        <div style='
+                            padding: 10px;
+                            border-radius: 5px;
+                            margin: 5px 0;
+                            background-color: rgba(0, 100, 0, 0.1);
+                            border-left: 4px solid #006400;
+                        '>
+                            <span style='font-size: 1.1em;'>
+                                <strong>{i}.</strong> {nome_produto}<br>
+                                💰 <strong>R$ {preco:.2f}</strong>
+                            </span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+
+    except Exception as e:
+        st.error(f"Erro ao exibir sugestões: {e}")
+
 # Função para aplicar o tema globalmente
 def aplicar_tema_completo(tema_noite):
     if tema_noite:
         st.markdown("""
             <style>
-                body, .stApp {
-                    background-color: #1E1E1E; /* Fundo preto */
-                    color: #E0E0E0;
+                /* Configurações gerais */
+                .main {
+                    padding: 2rem;
                 }
-                .css-1d391kg, .stSidebar, .stContainer {
-                    background-color: #2C2C2C; /* Cinza escuro */
-                    color: #E0E0E0;
+                
+                /* Tema escuro */
+                .stApp {
+                    background-color: #1a1a1a;
+                    color: #ffffff;
                 }
-                .stButton>button {
-                    background-color: #444444;
-                    color: #E0E0E0;
-                    border-radius: 30px;
-                    padding: 10px 30px;
+                
+                /* Cards e containers */
+                div[data-testid="stMetricValue"], 
+                div[data-testid="stMetricDelta"] {
+                    background-color: #2d2d2d;
+                    padding: 1rem;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
                 }
-                .stButton>button:hover {
-                    background-color: #555555;
+                
+                /* Textos e títulos */
+                h1, h2, h3, p, span, .stMarkdown {
+                    color: #ffffff !important;
                 }
-                .stMetric-value, .stMetric-label, h1, h2, h3, p, span {
-                    color: #E0E0E0 !important; /* Dourado */
+                
+                /* Inputs e seletores */
+                .stSelectbox > div > div,
+                .stMultiSelect > div > div {
+                    background-color: #2d2d2d !important;
+                    color: #ffffff !important;
+                    border: 1px solid #404040 !important;
+                    border-radius: 8px !important;
                 }
-                .stAlert {
-                    background-color: #333333;
-                    color: #E0E0E0 !important;
+                
+                /* Gráficos e tabelas */
+                .stPlotlyChart {
+                    background-color: #2d2d2d !important;
+                    border-radius: 10px;
+                    padding: 1rem;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
                 }
-                .stDataFrame, .stTable, .stPlotlyChart {
-                    background-color: #2E2E2E; /* DataFrames e tabelas com fundo preto */
-                    color: #E0E0E0 !important;
-                    border: 1px solid #444444;
+                
+                /* Sidebar */
+                section[data-testid="stSidebar"] {
+                    background-color: #2d2d2d;
+                    padding: 2rem 1rem;
                 }
-                .stTextInput, .stNumberInput, .stSelectbox {
-                    background-color: #444444; /* Campos de input escuros */
-                    color: #444444;
-                    border: 1px solid #555555;
+                
+                /* Botões */
+                .stButton > button {
+                    background-color: #4a90e2 !important;
+                    color: white !important;
+                    border-radius: 8px !important;
+                    border: none !important;
+                    padding: 0.5rem 1rem !important;
+                    transition: all 0.3s ease !important;
                 }
-                .stSidebar .stButton>button, .stSidebar .stNumberInput input, .stSidebar .stTextInput input, .stSidebar select {
-                    background-color: #444444; /* Botões e selects escuros */
-                    color: #E0E0E0;
+                
+                .stButton > button:hover {
+                    background-color: #357abd !important;
+                    transform: translateY(-2px);
                 }
-                .stCheckbox>div>label, .stRadio>div>label, .stSelectbox>div>label, .stSidebar {
-                    color: #E0E0E0 !important;
+                
+                /* Métricas */
+                div[data-testid="stMetricValue"] {
+                    font-size: 2.5rem !important;
+                    font-weight: bold !important;
+                    color: #4a90e2 !important;
                 }
-                .stSidebar h2, .stSidebar h3 {
-                    color: #E0E0E0 !important;
+                
+                /* Responsividade */
+                @media (max-width: 768px) {
+                    .main {
+                        padding: 1rem;
+                    }
+                    
+                    div[data-testid="stMetricValue"] {
+                        font-size: 1.8rem !important;
+                    }
                 }
-                .stMetric-value {
-                    color: #E0E0E0 !important;
-                    font-size: 2em;
-                }
-                .stMetric-label {
-                    color: #E0E0E0 !important;
-                }
-                header.stAppHeader {
-                    background-color: #444444;
-                    color: #E0E0E0;
-                    border-bottom: 1px solid #E0E0E0;
-                }
-                header.stAppHeader button {
-                    background-color: #555555;
-                    color: #E0E0E0 !important;
-                }
-                .st-emotion-cache-1wivap2, .st-cx {
-    
-    color: #E0E0E0; /* Texto claro */
-    
-}
-
             </style>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
             <style>
-                body, .stApp {
-                    background-color: #FFFFFF;
-                    color: #000000;
+                /* Configurações gerais */
+                .main {
+                    padding: 2rem;
                 }
-                .css-1d391kg, .stSidebar, .stContainer {
-                    background-color: #F0F0F0;
-                    color: #000000;
+                
+                /* Tema claro */
+                .stApp {
+                    background-color: #ffffff;
+                    color: #1a1a1a;
                 }
-                .stButton>button {
-                    background-color: #E0E0E0;
-                    color: #000000;
-                    border-radius: 30px;
-                    padding: 10px 30px;
+                
+                /* Cards e containers */
+                div[data-testid="stMetricValue"], 
+                div[data-testid="stMetricDelta"] {
+                    background-color: #f8f9fa;
+                    padding: 1rem;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
                 }
-                .stButton>button:hover {
-                    background-color: #CCCCCC;
+                
+                /* Textos e títulos */
+                h1, h2, h3, p, span, .stMarkdown {
+                    color: #1a1a1a !important;
                 }
-                .stMetric-value, .stMetric-label, h1, h2, h3, p, span {
-                    color: #000000 !important;
+                
+                /* Inputs e seletores */
+                .stSelectbox > div > div,
+                .stMultiSelect > div > div {
+                    background-color: #ffffff !important;
+                    color: #1a1a1a !important;
+                    border: 1px solid #e0e0e0 !important;
+                    border-radius: 8px !important;
                 }
-                .stAlert {
-                    background-color: #F0F0F0;
-                    color: #000000 !important;
+                
+                /* Gráficos e tabelas */
+                .stPlotlyChart {
+                    background-color: #ffffff !important;
+                    border-radius: 10px;
+                    padding: 1rem;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 }
-                .stDataFrame, .stTable, .stPlotlyChart {
-                    background-color: #FFFFFF;
-                    color: #000000 !important;
+                
+                /* Sidebar */
+                section[data-testid="stSidebar"] {
+                    background-color: #f8f9fa;
+                    padding: 2rem 1rem;
                 }
-                .stTextInput, .stNumberInput, .stSelectbox {
-                    background-color: #FFFFFF;
-                    color: #000000;
-                    border: 1px solid #CCCCCC;
+                
+                /* Botões */
+                .stButton > button {
+                    background-color: #4a90e2 !important;
+                    color: white !important;
+                    border-radius: 8px !important;
+                    border: none !important;
+                    padding: 0.5rem 1rem !important;
+                    transition: all 0.3s ease !important;
                 }
-                .stSidebar .stButton>button, .stSidebar .stNumberInput input, .stSidebar .stTextInput input, .stSidebar select {
-                    background-color: #FFFFFF;
-                    color: #000000;
+                
+                .stButton > button:hover {
+                    background-color: #357abd !important;
+                    transform: translateY(-2px);
                 }
-                .stCheckbox>div>label, .stRadio>div>label, .stSelectbox>div>label, .stSidebar {
-                    color: #000000 !important;
+                
+                /* Métricas */
+                div[data-testid="stMetricValue"] {
+                    font-size: 2.5rem !important;
+                    font-weight: bold !important;
+                    color: #4a90e2 !important;
                 }
-                .stSidebar h2, .stSidebar h3 {
-                    color: #000000 !important;
-                }
-                .stMetric-value {
-                    color: #007BFF !important;
-                    font-size: 1.8em !important;
-                }
-                header.stAppHeader {
-                    background-color: #FFFFFF;
-                    color: #000000;
-                    border-bottom: 1px solid #000000;
-                }
-                header.stAppHeader button {
-                    background-color: #E0E0E0;
-                    color: #000000 !important;
+                
+                /* Responsividade */
+                @media (max-width: 768px) {
+                    .main {
+                        padding: 1rem;
+                    }
+                    
+                    div[data-testid="stMetricValue"] {
+                        font-size: 1.8rem !important;
+                    }
                 }
             </style>
         """, unsafe_allow_html=True)
-
-
-
-
 
 # Função para exibir o alerta com a cor correta e formatação adequada
 def exibir_alerta_meta(gasto_total, meta_gasto):
@@ -247,182 +485,202 @@ def exibir_alerta_meta(gasto_total, meta_gasto):
         st.warning(f"⚠️ Você está próximo de atingir a meta de gasto. Gasto atual: R$ {gasto_total:,.2f}.")
     else:
         st.success(f"✅ Você está dentro da meta de gasto. Gasto atual: R$ {gasto_total:,.2f}.")
-# Função para gerar sugestões de economia
-def gerar_sugestoes_economia(df_filtrado):
-    # Agrupar os dados por descrição do item e razão social, calculando a média de preços
-    precos_por_item = df_filtrado.groupby(['descricao', 'razao_social'])['valor_total'].mean().unstack()
-
-    # Encontrar o menor preço para cada item
-    itens_mais_baratos = precos_por_item.idxmin(axis=1)  # Razão social com menor preço para cada item
-    precos_mais_baratos = precos_por_item.min(axis=1)  # Menor preço para cada item
-
-    # Gerar recomendações
-    recomendacoes = []
-    for item, supermercado in itens_mais_baratos.items():
-        preco = precos_mais_baratos[item]
-        recomendacoes.append({
-            'item': item,
-            'supermercado': supermercado,
-            'preco': preco
-        })
-
-    return recomendacoes
-
-# Função para exibir sugestões de economia com estilo
-def exibir_sugestoes(df_filtrado):
-    st.subheader("💡 Sugestões de Economia")
-
-    sugestoes = gerar_sugestoes_economia(df_filtrado)
-    
-    if sugestoes:
-        # Custom CSS para melhorar o estilo visual
-        st.markdown("""
-            <style>
-                .sugestao-box {
-                    background-color: #f0f0f0;
-                    padding: 10px;
-                    border-radius: 8px;
-                    margin-bottom: 10px;
-                    border-left: 5px solid #36a2eb;
-                }
-                .sugestao-box h4 {
-                    margin: 0;
-                    color: #1e88e5;
-                }
-                .sugestao-box p {
-                    margin: 0;
-                    color: #333;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-
-        # Exibindo cada sugestão dentro de uma caixa personalizada
-        for sugestao in sugestoes:
-            st.markdown(f"""
-                <div class="sugestao-box">
-                    <h4>Item: {sugestao['item']}</h4>
-                    <p>Supermercado mais barato: <strong>{sugestao['supermercado']}</strong></p>
-                    <p>Preço: <strong>R$ {sugestao['preco']:.2f}</strong></p>
-                </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.write("Nenhuma sugestão disponível.")
-
-
-# Função para visualizar gráficos interativos
-def graficos_interativos(df_filtrado):
-    fig_linha = px.line(df_filtrado, x='data_emissao', y='valor_total', title='Gastos ao Longo do Tempo', markers=True)
-    fig_area = px.area(df_filtrado, x='data_emissao', y='valor_total', title='Área Acumulada de Gastos')
-    
-    fig_linha.update_layout(xaxis_rangeslider_visible=True)
-    fig_area.update_layout(xaxis_rangeslider_visible=True)
-    
-    return fig_linha, fig_area
 
 # Função para exibir o dashboard com personalização completa
 def exibir_dashboard():
-    st.sidebar.image("logo_dash.png", width=200)  # Insira o caminho correto da logo aqui
-    st.title('Dashboard Financeiro')
+    # Configurar tema inicial
+    tema_noite = st.session_state.get('tema_noite', True)
+    
+    st.set_page_config(
+        page_title="Dashboard de Gastos",
+        page_icon="💰",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
-    # Carregar dados
+    # Sidebar com controles
+    with st.sidebar:
+        st.title("⚙️ Configurações")
+        
+        # Toggle para tema claro/escuro
+        tema_noite = st.toggle("🌙 Modo Escuro", value=tema_noite)
+        st.session_state['tema_noite'] = tema_noite
+        
+        st.markdown("---")
+        
+        # Filtros
+        st.subheader("📅 Filtros de Data")
+        data_inicio = st.date_input("Data Inicial")
+        data_fim = st.date_input("Data Final")
+        
+        st.markdown("---")
+        
+        # Meta de gastos
+        st.subheader("🎯 Meta de Gastos")
+        meta_gasto = st.number_input("Meta mensal (R$)", min_value=0.0, step=100.0)
+
+    # Aplicar tema
+    aplicar_tema_completo(tema_noite)
+
+    # Carregar e filtrar dados
     df = carregar_dados()
-
+    
     if not df.empty:
-        # Adicionar seletor de tema
-        tema_noite = st.sidebar.checkbox("Modo Noite", value=False)
-
-        # Aplicar o tema ao dashboard
-        aplicar_tema_completo(tema_noite)
-
-        # Adicionar filtros para seleção de mês, ano e categoria
-        st.sidebar.header("Filtros")
-        meses_disponiveis = df['data_emissao'].dt.month.unique()
-        anos_disponiveis = df['data_emissao'].dt.year.unique()
-        categorias_disponiveis = df['categoria'].unique()
-
-        mes_selecionado = st.sidebar.selectbox("Selecione o mês", options=meses_disponiveis, format_func=lambda x: f"Mês {x}" if pd.notnull(x) else "Todos")
-        ano_selecionado = st.sidebar.selectbox("Selecione o ano", options=anos_disponiveis, format_func=lambda x: f"{x}" if pd.notnull(x) else "Todos")
-        categoria_selecionada = st.sidebar.selectbox("Selecione a categoria", options=categorias_disponiveis, format_func=lambda x: x if pd.notnull(x) else "Todas")
-
-        # Filtrar os dados com base no mês, ano e categoria selecionados
-        df_filtrado = df.copy()
-        if pd.notnull(mes_selecionado):
-            df_filtrado = df_filtrado[df_filtrado['data_emissao'].dt.month == mes_selecionado]
-        if pd.notnull(ano_selecionado):
-            df_filtrado = df_filtrado[df_filtrado['data_emissao'].dt.year == ano_selecionado]
-        if pd.notnull(categoria_selecionada):
-            df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_selecionada]
-
-        # Exibir a razão social com mais compras
-        if categoria_selecionada == 'alimentacao':
-            st.subheader("Razão Social com mais Compras (Alimentação)")
-            razao_social_mais_compras = razao_social_com_mais_compras(df_filtrado)
-            st.write(razao_social_mais_compras)
-            
-            # Exibir comparação de preços por razão social
-            st.subheader("Comparação de Preços de Itens entre Razões Sociais")
-            precos_comparacao = comparar_precos(df_filtrado)
-            st.dataframe(precos_comparacao)
-
-        # Data da última compra
-        ultima_compra = calcular_ultima_compra(df_filtrado)
-        if ultima_compra:
-            st.subheader(f"Data da Última Compra: {ultima_compra.strftime('%d/%m/%Y')}")
+        # Filtrar dados por data
+        if data_inicio and data_fim:
+            df_filtrado = df[
+                (df['data_emissao'].dt.date >= data_inicio) &
+                (df['data_emissao'].dt.date <= data_fim)
+            ].copy()  # Criar uma cópia para evitar SettingWithCopyWarning
         else:
-            st.subheader("Nenhuma compra registrada.")
+            df_filtrado = df.copy()
 
-        # Total de compras realizadas
-        total_compras = calcular_total_compras(df_filtrado)
-        st.subheader(f"Total de Compras Realizadas: {total_compras}")
+        # Debug: Mostrar informações sobre os dados
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📊 Informações dos Dados")
+        st.sidebar.write(f"Total de registros: {len(df_filtrado)}")
+        
+        # Safely handle date display with NaT check
+        min_date = df_filtrado['data_emissao'].min()
+        max_date = df_filtrado['data_emissao'].max()
+        
+        if pd.isna(min_date) or pd.isna(max_date):
+            st.sidebar.write("Período: Dados não disponíveis")
+        else:
+            st.sidebar.write(f"Período: {min_date.strftime('%d/%m/%Y')} até {max_date.strftime('%d/%m/%Y')}")
 
-        # Meta de gasto por categoria
-        st.sidebar.header(f"Meta de Gasto Mensal para {categoria_selecionada}")
-        meta_gasto = st.sidebar.number_input(f"Defina a meta de gasto mensal para {categoria_selecionada} (R$)", min_value=0.0, value=1000.0, step=100.0)
+        # Cabeçalho principal
+        st.title("📊 Dashboard de Gastos")
+        
+        # Métricas principais em colunas
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            gasto_total, media_gastos = calcular_indicadores(df_filtrado)
+            st.metric("💰 Gasto Total", f"R$ {gasto_total:,.2f}")
+        
+        with col2:
+            st.metric("📈 Média de Gastos", f"R$ {media_gastos:,.2f}")
+        
+        with col3:
+            ultima_compra = calcular_ultima_compra(df_filtrado)
+            if ultima_compra:
+                st.metric("🗓️ Última Compra", ultima_compra.strftime("%d/%m/%Y"))
+        
+        with col4:
+            total_compras = calcular_total_compras(df_filtrado)
+            st.metric("🛍️ Total de Compras", total_compras)
 
-        # Calcular indicadores
-        gasto_total, media_gastos = calcular_indicadores(df_filtrado)
-        gasto_mensal = calcular_gastos_mensais(df_filtrado)
+        st.markdown("---")
 
-        # Exibir alerta de acordo com a proximidade da meta
+        # Gráficos em duas colunas
+        col_graf1, col_graf2 = st.columns(2)
+        
+        with col_graf1:
+            st.subheader("📈 Gastos por Mês")
+            graficos_interativos(df_filtrado)
+        
+        with col_graf2:
+            st.subheader("🏪 Top Estabelecimentos")
+            if not df_filtrado.empty:
+                razoes_sociais = razao_social_com_mais_compras(df_filtrado)
+                if not razoes_sociais.empty:
+                    fig_razoes = px.bar(
+                        razoes_sociais.head(5),
+                        x='razao_social',
+                        y='valor_total',
+                        title="Estabelecimentos mais Frequentes",
+                        template="plotly_dark" if tema_noite else "plotly_white"
+                    )
+                    fig_razoes.update_layout(
+                        height=400,
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        xaxis_title="Estabelecimento",
+                        yaxis_title="Valor Total (R$)"
+                    )
+                    fig_razoes.update_yaxes(
+                        tickprefix="R$ ",
+                        tickformat=",.2f"
+                    )
+                    st.plotly_chart(fig_razoes, use_container_width=True)
+                else:
+                    st.info("Não há dados suficientes para gerar o gráfico de estabelecimentos.")
+
+        # Alertas e sugestões
+        st.markdown("---")
+        
+        # Seção de alertas
+        st.subheader("⚠️ Alertas de Gastos")
         exibir_alerta_meta(gasto_total, meta_gasto)
+        
+        st.markdown("---")
+        
+        # Seção de sugestões de economia
+        st.subheader("💡 Oportunidades de Economia")
+        exibir_sugestoes(df_filtrado)
 
-        # Indicadores resumidos
-        st.subheader("Indicadores de Resumo")
-        col1, col2 = st.columns(2)
-        col1.metric("Gasto Total Acumulado", f"R$ {gasto_total:,.2f}")
-        col2.metric("Média de Gastos", f"R$ {media_gastos:,.2f}")
-
-        # Gráfico de Gastos Mensais
-        st.subheader("Gastos Mensais")
-        if not gasto_mensal.empty:
-            fig_gastos_mensais = px.bar(
-                gasto_mensal, x=gasto_mensal['data_emissao'].astype(str), y='Gasto Total',
-                labels={'x': 'Mês', 'Gasto Total': 'Gasto Total'},
-                title="Gasto Mensal Acumulado"
-            )
-            st.plotly_chart(fig_gastos_mensais)
-        else:
-            st.write("Nenhum dado disponível para o gráfico de gastos mensais.")
-
-        # Gráfico de Categorias de Gastos
-        st.subheader("Categorias de Gastos")
-        categorias_gastos = df_filtrado.groupby('categoria')['valor_total'].sum()
-        if not categorias_gastos.empty:
-            fig_categorias = px.pie(
-                categorias_gastos, values='valor_total', names=categorias_gastos.index,
-                title="Distribuição de Gastos por Categoria"
-            )
-            st.plotly_chart(fig_categorias)
-        st.subheader("Sugestões de Economia")
-        economias_sugeridas = gerar_sugestoes_economia(df_filtrado)
-        st.write(economias_sugeridas)
-
-        fig_linha, fig_area = graficos_interativos(df_filtrado)
-        st.subheader("Visualização de Gráficos Interativos")
-        st.plotly_chart(fig_linha)
-        st.plotly_chart(fig_area)
     else:
-            st.write("Nenhum dado disponível para exibir no dashboard.")
+        st.error("Não foram encontrados dados para exibir.")
+
+# Função para gerar gráficos interativos
+def graficos_interativos(df_filtrado):
+    try:
+        # Calcular gastos mensais
+        df_mensal = calcular_gastos_mensais(df_filtrado)
+        
+        if not df_mensal.empty:
+            # Configuração do tema
+            tema = "plotly_dark" if st.session_state.get('tema_noite', False) else "plotly_white"
+            
+            # Gráfico de linha mensal
+            fig_linha = px.line(
+                df_mensal,
+                x='data_emissao',
+                y='valor_total',
+                title='Gastos Mensais',
+                template=tema,
+                markers=True
+            )
+            
+            # Personalizar layout
+            fig_linha.update_layout(
+                height=400,
+                margin=dict(l=20, r=20, t=40, b=20),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis_title="Data",
+                yaxis_title="Valor (R$)",
+                showlegend=False,
+                hovermode='x unified'
+            )
+            
+            fig_linha.update_xaxes(
+                tickformat="%b/%Y",
+                tickangle=45,
+                gridcolor='rgba(128,128,128,0.2)',
+                showgrid=True
+            )
+            
+            fig_linha.update_yaxes(
+                tickprefix="R$ ",
+                tickformat=",.2f",
+                gridcolor='rgba(128,128,128,0.2)',
+                showgrid=True
+            )
+            
+            fig_linha.update_traces(
+                hovertemplate="Data: %{x|%b/%Y}<br>Valor: R$ %{y:.2f}<extra></extra>"
+            )
+            
+            # Exibir gráfico
+            st.plotly_chart(fig_linha, use_container_width=True)
+        else:
+            st.warning("Não há dados suficientes para gerar os gráficos.")
+            
+    except Exception as e:
+        st.error(f"Erro ao gerar gráficos: {str(e)}")
 
 # Chamar a função para exibir o dashboard
 if __name__ == "__main__":
